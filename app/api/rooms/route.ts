@@ -1,0 +1,5 @@
+import {db,identity,respond,readBody} from '@/lib/store';
+import {newRoom} from '@/lib/game';
+export async function POST(req:Request){const auth=await identity(req);try{const data=await readBody(req);const count=await db().prepare('SELECT COUNT(*) AS n FROM rooms WHERE owner = ? AND created > ?').bind(auth.session,Date.now()-3600000).first<{n:number}>();if((count?.n||0)>=20)return respond({error:'一小时内最多创建 20 个房间，请稍后再试'},429,auth.cookie);
+ const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';for(let attempt=0;attempt<4;attempt++){const code=Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>alphabet[x%32]).join('');const room=newRoom(code,auth.session,data);const result=await db().prepare('INSERT OR IGNORE INTO rooms (code, owner, state, revision, created, updated) VALUES (?, ?, ?, 0, ?, ?)').bind(code,auth.session,JSON.stringify(room),room.created,room.updated).run();if(result.meta.changes)return respond({code},201,auth.cookie);}throw Error('房间繁忙，请重试');
+ }catch(e){console.error('create room',e);return respond({error:e instanceof Error&&!/D1|SQLITE|binding/i.test(e.message)?e.message:'比赛服务暂时不可用，请稍后重试'},400,auth.cookie);}}
